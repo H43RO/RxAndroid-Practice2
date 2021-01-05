@@ -46,4 +46,13 @@ class CheeseActivity : BaseSearchActivity() {
             }
         }
     }
+
+    override fun onStart() {
+        super.onStart()
+
+        val searchTextObservable = createButtonClickObservable()
+        searchTextObservable.subscribe { query ->
+            showResult(cheeseSearchEngine.search(query))
+        }
+    }
 }
