@@ -30,29 +30,51 @@
 
 package com.raywenderlich.android.cheesefinder
 
+import android.text.Editable
+import android.text.TextWatcher
 import io.reactivex.Observable
+import io.reactivex.android.schedulers.AndroidSchedulers
+import io.reactivex.schedulers.Schedulers
 import kotlinx.android.synthetic.main.activity_cheeses.*
 
 class CheeseActivity : BaseSearchActivity() {
     private fun createButtonClickObservable(): Observable<String> {
-        return Observable.create { emitter ->
-            searchButton.setOnClickListener {
-                emitter.onNext(queryEditText.text.toString())
+        val textChangeObservable = Observable.create<String> { emitter ->
+            val textWatcher = object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    s?.toString()?.let { emitter.onNext(it) }
+                }
+
+                override fun afterTextChanged(s: Editable?) = Unit
             }
 
-            // Memory Leak 을 방지하기 위해 필요없을 땐 Listener 제거
+            queryEditText.addTextChangedListener(textWatcher)
             emitter.setCancellable {
-                searchButton.setOnClickListener(null)
+                queryEditText.removeTextChangedListener(textWatcher)
             }
         }
+        return textChangeObservable.filter { it.length >= 2 }
     }
 
     override fun onStart() {
         super.onStart()
 
         val searchTextObservable = createButtonClickObservable()
-        searchTextObservable.subscribe { query ->
-            showResult(cheeseSearchEngine.search(query))
-        }
+        searchTextObservable
+                .observeOn(AndroidSchedulers.mainThread())
+                .doOnNext {
+                    showProgress()
+                }
+                .observeOn(Schedulers.io())
+                .map {
+                    cheeseSearchEngine.search(it)
+                }
+                .observeOn(AndroidSchedulers.mainThread())
+                .subscribe {
+                    hideProgress()
+                    showResult(it)
+                }
     }
 }
