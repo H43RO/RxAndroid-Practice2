@@ -36,9 +36,25 @@ import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.schedulers.Schedulers
 import kotlinx.android.synthetic.main.activity_cheeses.*
+import java.util.concurrent.TimeUnit
 
 class CheeseActivity : BaseSearchActivity() {
+
+    // Button 클릭시 해당 쿼리 방출
     private fun createButtonClickObservable(): Observable<String> {
+        return Observable.create { emitter ->
+            searchButton.setOnClickListener {
+                emitter.onNext(queryEditText.text.toString())
+            }
+
+            emitter.setCancellable {
+                searchButton.setOnClickListener(null)
+            }
+        }
+    }
+
+    // EditText 쿼리 변경되면 해당 쿼리 방출
+    private fun createTextChangeObservable(): Observable<String> {
         val textChangeObservable = Observable.create<String> { emitter ->
             val textWatcher = object : TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -55,13 +71,21 @@ class CheeseActivity : BaseSearchActivity() {
                 queryEditText.removeTextChangedListener(textWatcher)
             }
         }
-        return textChangeObservable.filter { it.length >= 2 }
+
+        // 2글자 이상의 쿼리를 1초의 디바운스를 두고 Emit
+        return textChangeObservable
+                .filter { it.length >= 2 }
+                .debounce(1000, TimeUnit.MILLISECONDS)
     }
 
     override fun onStart() {
         super.onStart()
 
-        val searchTextObservable = createButtonClickObservable()
+        // Merge 연산자를 통해 버튼 클릭, 쿼리 변경에 동시 대응
+        val buttonClickStream = createButtonClickObservable()
+        val textChangeStream = createTextChangeObservable()
+
+        val searchTextObservable = Observable.merge<String>(buttonClickStream, textChangeStream)
         searchTextObservable
                 .observeOn(AndroidSchedulers.mainThread())
                 .doOnNext {
